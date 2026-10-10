@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <!-- Киоск: масштабирование жестами отключено намеренно -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Пётр I</title>
+
+  <style>
+    /* =========================================================
+       ШРИФТЫ (лежат локально в папке fonts/, интернет не нужен)
+       ========================================================= */
+
+    @font-face {
+      font-family: "Cormorant Garamond"; font-style: normal; font-weight: 300 700; font-display: swap;
+      src: url("fonts/CormorantGaramond-normal-cyrillic.woff2") format("woff2");
+      unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+    }
+    @font-face {
+      font-family: "Cormorant Garamond"; font-style: normal; font-weight: 300 700; font-display: swap;
+      src: url("fonts/CormorantGaramond-normal-latin.woff2") format("woff2");
+      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    }
+    @font-face {
+      font-family: "Cormorant Garamond"; font-style: italic; font-weight: 300 700; font-display: swap;
+      src: url("fonts/CormorantGaramond-italic-cyrillic.woff2") format("woff2");
+      unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+    }
+    @font-face {
+      font-family: "Cormorant Garamond"; font-style: italic; font-weight: 300 700; font-display: swap;
+      src: url("fonts/CormorantGaramond-italic-latin.woff2") format("woff2");
+      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    }
+    @font-face {
+      font-family: "Golos Text"; font-style: normal; font-weight: 400 900; font-display: swap;
+      src: url("fonts/GolosText-normal-cyrillic.woff2") format("woff2");
+      unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+    }
+    @font-face {
+      font-family: "Golos Text"; font-style: normal; font-weight: 400 900; font-display: swap;
+      src: url("fonts/GolosText-normal-latin.woff2") format("woff2");
+      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+    }
+
+    /* =========================================================
+       ТОКЕНЫ
+       ========================================================= */
+
+    :root {
+      --ink:        #0a0706;   /* фон */
+      --panel:      rgba(24, 14, 10, 0.72);
+      --panel-hi:   rgba(78, 40, 24, 0.86);
+      --gold:       #d6ad55;   /* акцент */
+      --gold-line:  rgba(214, 173, 85, 0.42);
+      --gold-soft:  rgba(214, 173, 85, 0.14);
+      --paper:      #f3ead7;   /* основной текст */
+      --muted:      #c4b597;   /* второстепенный текст */
+
+      --serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+      --sans:  "Golos Text", "Segoe UI", system-ui, sans-serif;
+
+      --radius: 3px;
+      --ease:   cubic-bezier(0.16, 1, 0.3, 1);   /* экспоненциальный ease-out */
+      --xfade:  0.3s;                             /* склейка петли фона */
+
+      --gutter: 5vw;
+    }
+
+    /* Базовый размер текста растёт вместе с экраном:
+       ~18px на 1920×1080, ~15px на ноутбуке 1366×768 */
+    html { font-size: clamp(13px, calc(0.62vw + 0.62vh), 28px); }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    ::selection { background: var(--gold); color: var(--ink); }
+
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+    button:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+
+    .icon { width: 1.15em; height: 1.15em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* =========================================================
+       ФОНОВОЕ ВИДЕО (две копии для бесшовной петли)
+       ========================================================= */
+
+    .stage {
+      position: fixed; inset: 0;
+      overflow: hidden;
+      background: var(--ink);
+      transition: filter 0.9s var(--ease), transform 0.9s var(--ease);
+    }
+
+    .loop {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity var(--xfade) linear;
+    }
+    .loop.on { opacity: 1; }
+
+    /* На экранах вопроса и ответа фон уходит в тёмный блюр */
+    body:not([data-view="idle"]) .stage {
+      filter: blur(34px) brightness(0.3) saturate(0.85);
+      transform: scale(1.1);
+    }
+
+    /* Затемнения поверх видео */
+    .scrim {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      transition: opacity 0.9s var(--ease);
+    }
+    .scrim-idle {
+      background:
+        linear-gradient(to right, rgba(10, 7, 6, 0.9) 0%, rgba(10, 7, 6, 0.74) 24%, rgba(10, 7, 6, 0.22) 40%, transparent 52%),
+        linear-gradient(to top, rgba(10, 7, 6, 0.55) 0%, transparent 30%);
+    }
+    .scrim-deep {
+      opacity: 0;
+      background: radial-gradient(120% 90% at 30% 50%, transparent 0%, rgba(10, 7, 6, 0.6) 100%);
+    }
+    body:not([data-view="idle"]) .scrim-idle { opacity: 0; }
+    body:not([data-view="idle"]) .scrim-deep { opacity: 1; }
+
+    /* =========================================================
+       ВИДЕО ОТВЕТА
+       ========================================================= */
+
+    .answer-video {
+      position: fixed; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      background: var(--ink);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.6s var(--ease);
+    }
+    body[data-view="answer"] .answer-video.ready { opacity: 1; }
+
+    /* =========================================================
+       ЭКРАНЫ
+       ========================================================= */
+
+    .view {
+      position: fixed; inset: 0;
+      padding: max(5vh, env(safe-area-inset-top)) var(--gutter) max(5vh, env(safe-area-inset-bottom));
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.35s ease-in, visibility 0s linear 0.35s;
+    }
+    body[data-view="idle"]   .view-idle,
+    body[data-view="topic"]  .view-topic,
+    body[data-view="answer"] .view-answer {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.7s var(--ease) 0.15s, visibility 0s;
+    }
+
+    /* Появление содержимого: лёгкий подъём каскадом */
+    .rise {
+      transform: translateY(1.2rem);
+      transition: transform 0.9s var(--ease);
+      transition-delay: calc(0.15s + var(--i, 0) * 0.06s);
+    }
+    body[data-view="idle"]   .view-idle .rise,
+    body[data-view="topic"]  .view-topic .rise,
+    body[data-view="answer"] .view-answer .rise { transform: none; }
+
+    /* ---------- общий вид строки-вопроса ---------- */
+
+    .menu { list-style: none; display: grid; gap: 0.7rem; }
+
+    .q {
+      display: grid;
+      grid-template-columns: 3.2rem 1fr auto;
+      align-items: center;
+      gap: 0.9rem;
+      width: 100%;
+      min-height: 4.4rem;
+      padding: 0.95rem 1.2rem 0.95rem 1.1rem;
+      border: 1px solid var(--gold-line);
+      border-radius: var(--radius);
+      background: linear-gradient(120deg, rgba(40, 22, 15, 0.84), rgba(16, 10, 8, 0.78));
+      box-shadow: inset 0 1px 0 rgba(255, 220, 140, 0.06), 0 0.4rem 1.4rem rgba(5, 3, 2, 0.35);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      text-align: left;
+      transition: background 0.25s ease, border-color 0.25s ease, transform 0.15s ease;
+    }
+
+    .q-num {
+      font-family: var(--serif);
+      font-size: 1.7rem;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--gold);
+      font-variant-numeric: lining-nums;
+      text-align: center;
+    }
+
+    .q-text {
+      font-size: 1.2rem;
+      font-weight: 500;
+      line-height: 1.3;
+      color: var(--paper);
+      text-wrap: pretty;
+    }
+
+    .q .icon { color: var(--gold); opacity: 0.7; font-size: 1.2rem; transition: transform 0.3s var(--ease), opacity 0.25s ease; }
+
+    .q:hover, .q:focus-visible {
+      background: linear-gradient(120deg, var(--panel-hi), rgba(34, 18, 12, 0.9));
+      border-color: var(--gold);
+    }
+    .q:hover .icon, .q:focus-visible .icon { opacity: 1; transform: translateX(0.25rem); }
+    .q:active { transform: scale(0.985); background: var(--panel-hi); }
+
+    /* =========================================================
+       ЭКРАН ОЖИДАНИЯ
+       ========================================================= */
+
+    .view-idle {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      width: calc(var(--gutter) + 31vw);
+      min-width: 22rem;
+    }
+
+    .masthead { margin-bottom: 2.6rem; }
+
+    .masthead h1 {
+      font-family: var(--serif);
+      font-size: 5.6rem;
+      font-weight: 600;
+      line-height: 0.95;
+      letter-spacing: -0.01em;
+      color: var(--gold);
+      text-shadow: 0 0.15rem 1.2rem rgba(0, 0, 0, 0.55);
+    }
+
+    .masthead p {
+      margin-top: 0.7rem;
+      font-family: var(--serif);
+      font-size: 1.85rem;
+      font-style: italic;
+      font-weight: 500;
+      line-height: 1.2;
+      color: var(--paper);
+    }
+
+    .masthead::after {
+      content: "";
+      display: block;
+      width: 5.5rem; height: 1px;
+      margin-top: 1.5rem;
+      background: linear-gradient(to right, var(--gold), transparent);
+    }
+
+    .hint {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 1.6rem;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    .hint .icon { color: var(--gold); }
+
+    /* =========================================================
+       ЭКРАН ВОПРОСА
+       ========================================================= */
+
+    .view-topic {
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .back, .close {
+      justify-self: start;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      min-height: 3.4rem;
+      padding: 0 1.3rem 0 1rem;
+      border: 1px solid var(--gold-line);
+      border-radius: var(--radius);
+      background: rgba(20, 13, 10, 0.6);
+      font-size: 1rem;
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      color: var(--muted);
+      transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease, transform 0.15s ease;
+    }
+    .back:hover, .back:focus-visible, .close:hover, .close:focus-visible {
+      background: var(--panel-hi);
+      border-color: var(--gold);
+      color: var(--paper);
+    }
+    .back:active, .close:active { transform: scale(0.97); }
+
+    .topic-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+      align-items: center;
+      gap: 6vw;
+      padding-bottom: 3.4rem; /* оптическая компенсация кнопки «Назад» */
+    }
+
+    .topic-num {
+      display: block;
+      font-family: var(--serif);
+      font-size: 9rem;
+      font-weight: 500;
+      line-height: 0.8;
+      color: var(--gold);
+      opacity: 0.85;
+    }
+
+    .topic-head h2 {
+      margin-top: 1.6rem;
+      max-width: 15ch;
+      font-family: var(--serif);
+      font-size: 3.5rem;
+      font-weight: 600;
+      line-height: 1.08;
+      letter-spacing: -0.01em;
+      color: var(--paper);
+      text-wrap: balance;
+    }
+
+    .topic-head p {
+      margin-top: 1.4rem;
+      font-size: 1rem;
+      color: var(--muted);
+    }
+
+    .menu-sub { gap: 0.9rem; }
+    .menu-sub .q { min-height: 5.4rem; grid-template-columns: 3.6rem 1fr auto; padding-left: 1.3rem; }
+    .menu-sub .q-num { font-size: 1.5rem; }
+    .menu-sub .q-text { font-size: 1.3rem; }
+    .menu-sub .q .icon { font-size: 1.6rem; }
+
+    /* =========================================================
+       ЭКРАН ОТВЕТА
+       ========================================================= */
+
+    .view-answer { pointer-events: none; }
+    .view-answer > * { pointer-events: auto; }
+
+    .close {
+      position: absolute;
+      top: max(5vh, env(safe-area-inset-top));
+      right: var(--gutter);
+    }
+
+    .caption {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 1.2rem;
+      padding: 8rem var(--gutter) max(5.5vh, env(safe-area-inset-bottom));
+      background: linear-gradient(to top, rgba(10, 7, 6, 0.86), rgba(10, 7, 6, 0.5) 55%, transparent);
+      pointer-events: none;
+    }
+    .caption-num {
+      font-family: var(--serif);
+      font-size: 2rem;
+      font-weight: 600;
+      color: var(--gold);
+    }
+    .caption p {
+      max-width: 40ch;
+      font-family: var(--serif);
+      font-size: 2rem;
+      font-weight: 600;
+      line-height: 1.15;
+      color: var(--paper);
+      text-shadow: 0 0.1rem 0.8rem rgba(0, 0, 0, 0.6);
+    }
+
+    .progress {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 3px;
+      pointer-events: none;
+    }
+    .progress i {
+      display: block;
+      height: 100%;
+      background: var(--gold);
+      transform-origin: left center;
+      transform: scaleX(0);
+    }
+
+    /* Ролик ответа ещё не добавлен */
+    .missing {
+      position: absolute;
+      left: var(--gutter);
+      top: 50%;
+      max-width: 44rem;
+      transform: translateY(-50%);
+      display: none;
+    }
+    .missing .caption-num { display: block; font-size: 2.4rem; }
+    .missing h2 {
+      margin-top: 1rem;
+      font-family: var(--serif);
+      font-size: 3.2rem;
+      font-weight: 600;
+      line-height: 1.1;
+      text-wrap: balance;
+    }
+    .missing p {
+      margin-top: 1.4rem;
+      font-size: 1.15rem;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .missing .back { margin-top: 2.4rem; }
+
+    .view-answer.is-missing .missing { display: block; }
+    .view-answer.is-missing .caption,
+    .view-answer.is-missing .progress,
+    .view-answer.is-missing .close { display: none; }
+
+    /* =========================================================
+       ВЕРТИКАЛЬНЫЙ ЭКРАН / УЗКИЕ ЭКРАНЫ (черновая адаптация,
+       точную вёрстку сделаем под модель киоска)
+       ========================================================= */
+
+    @media (max-aspect-ratio: 1/1) {
+      html { font-size: clamp(13px, calc(1.1vw + 0.5vh), 28px); }
+      .scrim-idle { background: linear-gradient(to top, rgba(10, 7, 6, 0.94) 0%, rgba(10, 7, 6, 0.75) 45%, transparent 70%); }
+      .view-idle { width: 100%; min-width: 0; justify-content: flex-end; }
+      .masthead h1 { font-size: 4.4rem; }
+      .topic-grid { grid-template-columns: 1fr; gap: 3rem; align-content: center; }
+      .topic-num { font-size: 6rem; }
+      .topic-head h2 { max-width: none; font-size: 2.8rem; }
+    }
+
+    /* =========================================================
+       ПОНИЖЕННОЕ ДВИЖЕНИЕ
+       ========================================================= */
+
+    @media (prefers-reduced-motion: reduce) {
+      .rise { transform: none; transition: none; }
+      .stage { transition: filter 0.3s linear; }
+      body:not([data-view="idle"]) .stage { transform: none; }
+      .q .icon { transition: none; }
+    }
+  </style>
+</head>
+
+<body data-view="idle">
+
+  <!-- Фон: две копии одного ролика, перекрёстная склейка 0.3 с -->
+  <div class="stage" aria-hidden="true">
+    <video class="loop on" playsinline preload="auto" disablepictureinpicture></video>
+    <video class="loop"    playsinline preload="auto" disablepictureinpicture></video>
+  </div>
+  <div class="scrim scrim-idle" aria-hidden="true"></div>
+  <div class="scrim scrim-deep" aria-hidden="true"></div>
+
+  <video class="answer-video" id="answerVideo" playsinline preload="auto" disablepictureinpicture></video>
+
+  <!-- ===================== ОЖИДАНИЕ ===================== -->
+  <section class="view view-idle" aria-label="Вопросы к государю">
+    <header class="masthead rise">
+      <h1>Пётр I</h1>
+      <p>Вопросы к государю</p>
+    </header>
+    <ol class="menu" id="rootMenu"></ol>
+    <p class="hint rise" style="--i: 7">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1-6 6h-1a5 5 0 0 1-4.2-2.3L4.5 15a1.5 1.5 0 0 1 2.4-1.8L9 15"/></svg>
+      Коснитесь вопроса, и Пётр ответит
+    </p>
+  </section>
+
+  <!-- ===================== ВОПРОС ===================== -->
+  <section class="view view-topic" aria-live="polite">
+    <button class="back rise" id="topicBack">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></svg>
+      Все вопросы
+    </button>
+    <div class="topic-grid">
+      <div class="topic-head rise" style="--i: 1">
+        <span class="topic-num" id="topicNum"></span>
+        <h2 id="topicTitle"></h2>
+        <p>Выберите, что спросить у государя</p>
+      </div>
+      <ol class="menu menu-sub" id="topicMenu"></ol>
+    </div>
+  </section>
+
+  <!-- ===================== ОТВЕТ ===================== -->
+  <section class="view view-answer" id="answerView" aria-live="polite">
+    <button class="close" id="answerClose">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      Закрыть
+    </button>
+
+    <div class="caption">
+      <span class="caption-num" id="answerNum"></span>
+      <p id="answerText"></p>
+    </div>
+    <div class="progress"><i id="answerProgress"></i></div>
+
+    <div class="missing rise">
+      <span class="caption-num" id="missingNum"></span>
+      <h2 id="missingText"></h2>
+      <p>Видеоответ на этот вопрос ещё не добавлен.</p>
+      <button class="back" id="missingBack">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></svg>
+        Вернуться к вопросам
+      </button>
+    </div>
+  </section>
+
+
+  <script>
+    /* =========================================================
+       НАСТРОЙКИ
+       ========================================================= */
+
+    // Фоновое видео экрана ожидания
+    const BACKGROUND = "1010.mp4";
+
+    // Длина склейки при зацикливании, секунды (как mix в монтаже)
+    const CROSSFADE = 0.3;
+
+    // Видеоответы. По умолчанию ищется answers/<номер>.mp4,
+    // например answers/1.1.mp4. Чтобы указать другой файл,
+    // добавьте вопросу поле video: "путь/к/файлу.mp4".
+    const ANSWERS_DIR = "answers/";
+
+    // Через сколько секунд без касаний вернуться на экран ожидания
+    const IDLE_TIMEOUT = 90;
+
+
+    /* =========================================================
+       ДЕРЕВО ВОПРОСОВ
+       ========================================================= */
+
+    const tree = {
+      root: {
+        buttons: [
+          { id: "1", num: "I",   text: "Зачем выбрали это место для Петербурга?", type: "branch" },
+          { id: "2", num: "II",  text: "Что делать при частой прокрастинации?",   type: "branch" },
+          { id: "3", num: "III", text: "Жалели ли о решениях, принятых в гневе?", type: "branch" },
+          { id: "4", num: "IV",  text: "Главный совет для современной России?",   type: "branch" },
+          { id: "5", num: "V",   text: "Как правильно выбирать людей в команду?", type: "branch" }
+        ]
+      },
+
+      "1": {
+        num: "I",
+        title: "Зачем выбрали это место для Петербурга?",
+        buttons: [
+          { id: "1.1", num: "1.1", text: "Зачем нужна была связь с Европой?", type: "leaf" },
+          { id: "1.2", num: "1.2", text: "Зачем насильно брили бороды и меняли одежду?", type: "leaf" },
+          { id: "1.3", num: "1.3", text: "Город построен на пустом болоте с нуля?", type: "leaf" }
+        ]
+      },
+
+      "2": {
+        num: "II",
+        title: "Что делать при частой прокрастинации?",
+        buttons: [
+          { id: "2.1", num: "2.1", text: "Откуда столько энергии на все реформы?", type: "leaf" },
+          { id: "2.2", num: "2.2", text: "Хотелось ли когда-то всё бросить?", type: "leaf" },
+          { id: "2.3", num: "2.3", text: "Жесткий совет: как начать работать прямо сейчас?", type: "leaf" }
+        ]
+      },
+
+      "3": {
+        num: "III",
+        title: "Жалели ли о решениях, принятых в гневе?",
+        buttons: [
+          { id: "3.1", num: "3.1", text: "Как справляться со стрессом и давлением?", type: "leaf" },
+          { id: "3.2", num: "3.2", text: "Как научиться сдерживать гнев и не рубить с плеча?", type: "leaf" },
+          { id: "3.3", num: "3.3", text: "Какую одну роковую ошибку прошлого вы бы исправили?", type: "leaf" }
+        ]
+      },
+
+      "4": {
+        num: "IV",
+        title: "Главный совет для современной России?",
+        buttons: [
+          { id: "4.1", num: "4.1", text: "Россия — это Европа, Азия или особый путь?", type: "leaf" },
+          { id: "4.2", num: "4.2", text: "Чему современные правители могли бы у вас поучиться?", type: "leaf" },
+          { id: "4.3", num: "4.3", text: "Сохранили ли потомки ваше наследие?", type: "leaf" }
+        ]
+      },
+
+      "5": {
+        num: "V",
+        title: "Как правильно выбирать людей в команду?",
+        buttons: [
+          { id: "5.1", num: "5.1", text: "Почему прощалось воровство Меншикову?", type: "leaf" },
+          { id: "5.2", num: "5.2", text: "Что делать, если друг тянет проект на дно?", type: "leaf" },
+          { id: "5.3", num: "5.3", text: "Как быстро распознать предателя?", type: "leaf" }
+        ]
+      }
+    };
+
+
+    /* =========================================================
+       БЕСШОВНАЯ ПЕТЛЯ ФОНА
+
+       Две копии ролика. За CROSSFADE секунд до конца
+       вторая копия стартует с начала и проявляется поверх
+       первой. Получается та же склейка, что в монтаже.
+       ========================================================= */
+
+    const loop = (() => {
+      const [a, b] = document.querySelectorAll(".loop");
+      let cur = a, next = b, swapping = false, running = false;
+
+      document.documentElement.style.setProperty("--xfade", CROSSFADE + "s");
+
+      for (const v of [a, b]) {
+        v.src = BACKGROUND;
+        v.addEventListener("error", () => console.warn("Не удалось загрузить фон:", BACKGROUND));
+      }
+      // запасной вариант, если вкладка в фоне и кадры не считаются
+      cur.loop = true;
+
+      // Звук. Браузер может запретить автозапуск со звуком:
+      // тогда видео идёт без звука до первого касания экрана.
+      // В киоске (start.bat) запрет снимается флагом
+      // --autoplay-policy=no-user-gesture-required.
+      function start(v) {
+        v.muted = false;
+        return v.play().catch(() => {
+          v.muted = true;
+          v.play().catch(() => {});
+          document.addEventListener("pointerdown", () => {
+            a.muted = b.muted = false;
+          }, { once: true });
+        });
+      }
+
+      // Звук на склейке переходит так же плавно, как картинка
+      function fadeAudio(from, to) {
+        const t0 = performance.now();
+        to.volume = 0;
+        to.muted = from.muted;
+        (function step(now) {
+          const k = Math.min(1, (now - t0) / (CROSSFADE * 1000));
+          to.volume = k;
+          from.volume = 1 - k;
+          if (k < 1) requestAnimationFrame(step);
+        })(t0);
+      }
+
+      function swap() {
+        swapping = true;
+        const prev = cur;
+        next.currentTime = 0;
+        fadeAudio(prev, next);
+        next.play().catch(() => {});
+        next.style.zIndex = 2;
+        prev.style.zIndex = 1;
+        next.classList.add("on");
+
+        setTimeout(() => {
+          prev.classList.remove("on");
+          prev.pause();
+          prev.volume = 1;
+          prev.loop = false;
+          prev.currentTime = 0;     // заранее готовим к следующей склейке
+          cur = next; next = prev;
+          cur.loop = true;
+          swapping = false;
+        }, CROSSFADE * 1000 + 60);
+      }
+
+      function tick() {
+        if (!running) return;
+        const d = cur.duration;
+        if (!swapping && d && cur.currentTime >= d - CROSSFADE) {
+          cur.loop = false;
+          swap();
+        }
+        requestAnimationFrame(tick);
+      }
+
+      return {
+        play() {
+          if (running) return;
+          running = true;
+          start(cur);
+          requestAnimationFrame(tick);
+        },
+        pause() {
+          running = false;
+          a.pause(); b.pause();
+        }
+      };
+    })();
+
+
+    /* =========================================================
+       DOM
+       ========================================================= */
+
+    const $ = id => document.getElementById(id);
+
+    const rootMenu     = $("rootMenu");
+    const topicMenu    = $("topicMenu");
+    const answerView   = $("answerView");
+    const answerVideo  = $("answerVideo");
+    const progressBar  = $("answerProgress");
+
+    const ARROW = '<svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>';
+    const PLAY  = '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.25"/><path d="M10 8.6v6.8l5.4-3.4z"/></svg>';
+
+
+    /* =========================================================
+       СОСТОЯНИЕ
+       ========================================================= */
+
+    let currentTopic = null;   // id открытого вопроса ("1"…"5")
+    let idleTimer = 0;
+
+    function setView(name) {
+      document.body.dataset.view = name;
+      armIdle();
+    }
+
+    // Возврат на экран ожидания, если к киоску долго не прикасались
+    function armIdle() {
+      clearTimeout(idleTimer);
+      const v = document.body.dataset.view;
+      const answering = v === "answer" && !answerView.classList.contains("is-missing");
+      if (v !== "idle" && !answering) {
+        idleTimer = setTimeout(showIdle, IDLE_TIMEOUT * 1000);
+      }
+    }
+    document.addEventListener("pointerdown", armIdle, { passive: true });
+
+
+    /* =========================================================
+       КНОПКИ
+       ========================================================= */
+
+    function makeItem(btn, index, icon, onTap) {
+      const li = document.createElement("li");
+      li.className = "rise";
+      li.style.setProperty("--i", index + 1);
+
+      const el = document.createElement("button");
+      el.className = "q";
+      el.innerHTML = `<span class="q-num">${btn.num}</span><span class="q-text"></span>${icon}`;
+      el.querySelector(".q-text").textContent = btn.text;
+      el.addEventListener("click", () => onTap(btn));
+
+      li.appendChild(el);
+      return li;
+    }
+
+    tree.root.buttons.forEach((btn, i) =>
+      rootMenu.appendChild(makeItem(btn, i, ARROW, b => openTopic(b.id)))
+    );
+
+
+    /* =========================================================
+       ЭКРАНЫ
+       ========================================================= */
+
+    function showIdle() {
+      stopAnswer();
+      currentTopic = null;
+      setView("idle");
+      loop.play();
+    }
+
+    function openTopic(id) {
+      const node = tree[id];
+      if (!node) return;
+
+      currentTopic = id;
+      $("topicNum").textContent = node.num;
+      $("topicTitle").textContent = node.title;
+
+      topicMenu.innerHTML = "";
+      node.buttons.forEach((btn, i) =>
+        topicMenu.appendChild(makeItem(btn, i + 1, PLAY, playAnswer))
+      );
+
+      stopAnswer();
+      loop.play();
+      setView("topic");
+    }
+
+    function playAnswer(btn) {
+      $("answerNum").textContent  = $("missingNum").textContent  = btn.num;
+      $("answerText").textContent = $("missingText").textContent = btn.text;
+
+      answerView.classList.remove("is-missing");
+      answerVideo.classList.remove("ready");
+      progressBar.style.transform = "scaleX(0)";
+
+      answerVideo.src = btn.video || `${ANSWERS_DIR}${btn.id}.mp4`;
+      answerVideo.muted = false;
+      answerVideo.load();
+      answerVideo.play().catch(() => {});
+
+      setView("answer");
+    }
+
+    function stopAnswer() {
+      answerVideo.pause();
+      answerVideo.classList.remove("ready");
+      answerVideo.removeAttribute("src");
+      answerVideo.load();
+    }
+
+    function backToTopic() {
+      if (currentTopic) openTopic(currentTopic);
+      else showIdle();
+    }
+
+
+    /* =========================================================
+       СОБЫТИЯ ВИДЕО ОТВЕТА
+       ========================================================= */
+
+    answerVideo.addEventListener("playing", () => {
+      if (document.body.dataset.view !== "answer") return;
+      answerVideo.classList.add("ready");
+      loop.pause();   // фон не нужен, пока идёт ответ
+    });
+
+    answerVideo.addEventListener("timeupdate", () => {
+      const d = answerVideo.duration;
+      if (d) progressBar.style.transform = `scaleX(${answerVideo.currentTime / d})`;
+    });
+
+    // После ответа возвращаемся на тот же вопрос
+    answerVideo.addEventListener("ended", backToTopic);
+
+    // Файла ответа нет: показываем понятное сообщение
+    answerVideo.addEventListener("error", () => {
+      if (document.body.dataset.view !== "answer" || !answerVideo.getAttribute("src")) return;
+      console.warn("Нет видеоответа:", answerVideo.getAttribute("src"));
+      answerView.classList.add("is-missing");
+      armIdle();
+    });
+
+
+    /* =========================================================
+       УПРАВЛЕНИЕ
+       ========================================================= */
+
+    $("topicBack").addEventListener("click", showIdle);
+    $("answerClose").addEventListener("click", backToTopic);
+    $("missingBack").addEventListener("click", backToTopic);
+
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Escape") return;
+      const v = document.body.dataset.view;
+      if (v === "answer") backToTopic();
+      else if (v === "topic") showIdle();
+    });
+
+    // В киоске контекстное меню по долгому нажатию не нужно
+    document.addEventListener("contextmenu", e => e.preventDefault());
+
+
+    /* =========================================================
+       ЗАПУСК
+       ========================================================= */
+
+    showIdle();
+  </script>
+</body>
+</html>
