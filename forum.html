@@ -106,17 +106,20 @@
       transition: filter 0.9s var(--ease), transform 0.9s var(--ease);
     }
 
-    .loop {
+    /* Слои сцены: две копии фона и ролик ответа.
+       Переход между любыми двумя слоями — микс CROSSFADE секунд. */
+    .layer {
       position: absolute; inset: 0;
       width: 100%; height: 100%;
       object-fit: cover;
       opacity: 0;
       transition: opacity var(--xfade) linear;
     }
-    .loop.on { opacity: 1; }
+    .layer.on { opacity: 1; }
 
-    /* На экранах вопроса и ответа фон уходит в тёмный блюр */
-    body:not([data-view="idle"]) .stage {
+    /* Тёмный блюр: экран вопроса и подготовка ответа.
+       Под ним скрытно перематывается фон. */
+    body.blur .stage {
       filter: blur(34px) brightness(0.3) saturate(0.85);
       transform: scale(1.1);
     }
@@ -137,22 +140,7 @@
       background: radial-gradient(120% 90% at 30% 50%, transparent 0%, rgba(10, 7, 6, 0.6) 100%);
     }
     body:not([data-view="idle"]) .scrim-idle { opacity: 0; }
-    body:not([data-view="idle"]) .scrim-deep { opacity: 1; }
-
-    /* =========================================================
-       ВИДЕО ОТВЕТА
-       ========================================================= */
-
-    .answer-video {
-      position: fixed; inset: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
-      background: var(--ink);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.6s var(--ease);
-    }
-    body[data-view="answer"] .answer-video.ready { opacity: 1; }
+    body.blur .scrim-deep { opacity: 1; }
 
     /* =========================================================
        ЭКРАНЫ
@@ -474,13 +462,12 @@
 
   <!-- Фон: две копии одного ролика, перекрёстная склейка 0.3 с -->
   <div class="stage" aria-hidden="true">
-    <video class="loop on" playsinline preload="auto" disablepictureinpicture></video>
-    <video class="loop"    playsinline preload="auto" disablepictureinpicture></video>
+    <video class="layer on" id="loopA" playsinline preload="auto" disablepictureinpicture></video>
+    <video class="layer"    id="loopB" playsinline preload="auto" disablepictureinpicture></video>
+    <video class="layer"    id="answerVideo" playsinline preload="auto" disablepictureinpicture></video>
   </div>
   <div class="scrim scrim-idle" aria-hidden="true"></div>
   <div class="scrim scrim-deep" aria-hidden="true"></div>
-
-  <video class="answer-video" id="answerVideo" playsinline preload="auto" disablepictureinpicture></video>
 
   <!-- ===================== ОЖИДАНИЕ ===================== -->
   <section class="view view-idle" aria-label="Вопросы к государю">
@@ -544,13 +531,18 @@
     // Фоновое видео экрана ожидания
     const BACKGROUND = "1010.mp4";
 
-    // Длина склейки при зацикливании, секунды (как mix в монтаже)
+    // Длина склейки (mix), секунды: петля фона, фон → ответ, ответ → фон
     const CROSSFADE = 0.3;
 
-    // Видеоответы. По умолчанию ищется answers/<номер>.mp4,
-    // например answers/1.1.mp4. Чтобы указать другой файл,
+    // Сколько последних секунд фона показать перед ответом.
+    // Под блюром фон незаметно перематывается к этой точке,
+    // блюр растворяется, фон доигрывает и через микс переходит в ответ.
+    const TAIL = 1.8;
+
+    // Видеоответы: videos/<номер темы>/<номер вопроса>.mp4,
+    // например videos/1/1.1.mp4. Чтобы указать другой файл,
     // добавьте вопросу поле video: "путь/к/файлу.mp4".
-    const ANSWERS_DIR = "answers/";
+    const ANSWERS_DIR = "videos/";
 
     // Через сколько секунд без касаний вернуться на экран ожидания
     const IDLE_TIMEOUT = 90;
@@ -624,46 +616,57 @@
 
 
     /* =========================================================
-       БЕСШОВНАЯ ПЕТЛЯ ФОНА
+       СЦЕНА: ПЕТЛЯ ФОНА И ВИДЕООТВЕТЫ
 
-       Две копии ролика. За CROSSFADE секунд до конца
-       вторая копия стартует с начала и проявляется поверх
-       первой. Получается та же склейка, что в монтаже.
+       Три слоя: две копии фона и ролик ответа. Любой переход
+       между слоями — микс CROSSFADE секунд (картинка и звук).
+
+       loop      фон крутится: за CROSSFADE до конца вторая копия
+                 стартует с начала и проявляется поверх первой
+       toAnswer  фон перемотан к последним TAIL секундам;
+                 в конце он миксуется в ответ
+       answer    идёт ответ; в конце миксуется в начало фона
        ========================================================= */
 
-    const loop = (() => {
-      const [a, b] = document.querySelectorAll(".loop");
-      let cur = a, next = b, swapping = false, running = false;
+    const media = (() => {
+      const a = document.getElementById("loopA");
+      const b = document.getElementById("loopB");
+      const ans = document.getElementById("answerVideo");
+      const all = [a, b, ans];
+
+      let cur = a, mode = "loop", busy = false, running = false;
+      const api = { onAnswerStart: null, onAnswerEnd: null, onProgress: null };
 
       document.documentElement.style.setProperty("--xfade", CROSSFADE + "s");
 
       for (const v of [a, b]) {
         v.src = BACKGROUND;
+        v.loop = true;   // запасной вариант, если кадры не считаются (вкладка в фоне)
         v.addEventListener("error", () => console.warn("Не удалось загрузить фон:", BACKGROUND));
       }
-      // запасной вариант, если вкладка в фоне и кадры не считаются
-      cur.loop = true;
+
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const once = (v, ev, ms) => new Promise(r => {
+        const t = setTimeout(r, ms);
+        v.addEventListener(ev, () => { clearTimeout(t); r(); }, { once: true });
+      });
 
       // Звук. Браузер может запретить автозапуск со звуком:
-      // тогда видео идёт без звука до первого касания экрана.
-      // В киоске (start.bat) запрет снимается флагом
+      // тогда фон идёт без звука до первого касания экрана.
+      // В киоске запрет снимается флагом Chrome
       // --autoplay-policy=no-user-gesture-required.
       function start(v) {
         v.muted = false;
         return v.play().catch(() => {
-          v.muted = true;
+          a.muted = b.muted = true;
           v.play().catch(() => {});
-          document.addEventListener("pointerdown", () => {
-            a.muted = b.muted = false;
-          }, { once: true });
+          document.addEventListener("pointerdown", () => { a.muted = b.muted = false; }, { once: true });
         });
       }
 
-      // Звук на склейке переходит так же плавно, как картинка
       function fadeAudio(from, to) {
         const t0 = performance.now();
         to.volume = 0;
-        to.muted = from.muted;
         (function step(now) {
           const k = Math.min(1, (now - t0) / (CROSSFADE * 1000));
           to.volume = k;
@@ -672,50 +675,91 @@
         })(t0);
       }
 
-      function swap() {
-        swapping = true;
-        const prev = cur;
-        next.currentTime = 0;
-        fadeAudio(prev, next);
-        next.play().catch(() => {});
-        next.style.zIndex = 2;
-        prev.style.zIndex = 1;
-        next.classList.add("on");
+      // Микс со слоя from на слой to (to стартует с начала)
+      function crossfade(from, to) {
+        busy = true;
+        to.currentTime = 0;
+        for (const v of all) v.style.zIndex = v === to ? 3 : v === from ? 2 : 1;
+        fadeAudio(from, to);
+        to.play().catch(() => {});
+        to.classList.add("on");
 
-        setTimeout(() => {
-          prev.classList.remove("on");
-          prev.pause();
-          prev.volume = 1;
-          prev.loop = false;
-          prev.currentTime = 0;     // заранее готовим к следующей склейке
-          cur = next; next = prev;
-          cur.loop = true;
-          swapping = false;
-        }, CROSSFADE * 1000 + 60);
+        return wait(CROSSFADE * 1000 + 60).then(() => {
+          from.classList.remove("on");
+          from.pause();
+          from.volume = 1;
+          if (from !== ans) from.currentTime = 0;   // заранее готовим к следующей склейке
+          cur = to;
+          busy = false;
+        });
       }
+
+      const spareLoop = () => (cur === a ? b : a);
 
       function tick() {
         if (!running) return;
-        const d = cur.duration;
-        if (!swapping && d && cur.currentTime >= d - CROSSFADE) {
-          cur.loop = false;
-          swap();
-        }
         requestAnimationFrame(tick);
+        if (busy) return;
+
+        const d = cur.duration, t = cur.currentTime;
+        if (!d) return;
+        if (cur === ans && api.onProgress) api.onProgress(t / d);
+        if (t < d - CROSSFADE) return;
+
+        if (mode === "loop") {
+          crossfade(cur, spareLoop());
+        } else if (mode === "toAnswer") {
+          mode = "answer";
+          crossfade(cur, ans);
+          if (api.onAnswerStart) api.onAnswerStart();
+        } else if (mode === "answer" && cur === ans) {
+          if (api.onAnswerEnd) api.onAnswerEnd();
+        }
       }
 
-      return {
-        play() {
-          if (running) return;
-          running = true;
-          start(cur);
-          requestAnimationFrame(tick);
-        },
-        pause() {
-          running = false;
-          a.pause(); b.pause();
+      api.play = () => {
+        if (running) return;
+        running = true;
+        start(cur);
+        requestAnimationFrame(tick);
+      };
+
+      // Загружает ролик ответа. true — готов к показу, false — файла нет
+      api.prepareAnswer = src => new Promise(resolve => {
+        const ok = () => { off(); resolve(true); };
+        const fail = () => { off(); console.warn("Нет видеоответа:", src); resolve(false); };
+        const off = () => { ans.removeEventListener("canplaythrough", ok); ans.removeEventListener("error", fail); };
+        ans.addEventListener("canplaythrough", ok);
+        ans.addEventListener("error", fail);
+        ans.muted = false;
+        ans.preload = "auto";
+        ans.src = src;
+        ans.load();
+      });
+
+      // Скрытая перемотка фона к последним TAIL секундам (пока экран размыт)
+      api.cueTail = async () => {
+        while (busy) await wait(30);
+        mode = "toAnswer";
+        const d = cur.duration || 0;
+        if (d && cur.currentTime < d - TAIL) {
+          cur.currentTime = Math.max(0, d - TAIL);
+          await once(cur, "seeked", 1000);
         }
       };
+
+      // Выход из ответа на любом этапе: ответ миксуется в начало фона
+      api.exitAnswer = async () => {
+        if (mode === "toAnswer") { mode = "loop"; return; }
+        if (mode !== "answer") return;
+        mode = "loop";
+        while (busy) await wait(30);
+        if (cur === ans) await crossfade(ans, spareLoop());
+      };
+
+      api.answerTime = () => (cur === ans ? ans.currentTime : 0);
+
+      return api;
     })();
 
 
@@ -728,7 +772,6 @@
     const rootMenu     = $("rootMenu");
     const topicMenu    = $("topicMenu");
     const answerView   = $("answerView");
-    const answerVideo  = $("answerVideo");
     const progressBar  = $("answerProgress");
 
     const ARROW = '<svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>';
@@ -741,10 +784,16 @@
 
     let currentTopic = null;   // id открытого вопроса ("1"…"5")
     let idleTimer = 0;
+    let flow = 0;              // номер текущего запуска ответа: отменяет устаревшие шаги
 
     function setView(name) {
       document.body.dataset.view = name;
+      setBlur(name !== "idle");
       armIdle();
+    }
+
+    function setBlur(on) {
+      document.body.classList.toggle("blur", on);
     }
 
     // Возврат на экран ожидания, если к киоску долго не прикасались
@@ -788,10 +837,10 @@
        ========================================================= */
 
     function showIdle() {
-      stopAnswer();
+      flow++;
+      media.exitAnswer();
       currentTopic = null;
       setView("idle");
-      loop.play();
     }
 
     function openTopic(id) {
@@ -807,65 +856,51 @@
         topicMenu.appendChild(makeItem(btn, i + 1, PLAY, playAnswer))
       );
 
-      stopAnswer();
-      loop.play();
       setView("topic");
     }
 
-    function playAnswer(btn) {
+    /*
+       Ответ:
+       1. экран вопроса гаснет, фон ещё в блюре, сразу видна подпись;
+       2. грузится ролик, фон под блюром перематывается к концу;
+       3. блюр растворяется, фон доигрывает последние секунды;
+       4. микс фон → ответ; в конце ответа микс обратно под блюр.
+    */
+    async function playAnswer(btn) {
+      const my = ++flow;
+
       $("answerNum").textContent  = $("missingNum").textContent  = btn.num;
       $("answerText").textContent = $("missingText").textContent = btn.text;
-
       answerView.classList.remove("is-missing");
-      answerVideo.classList.remove("ready");
       progressBar.style.transform = "scaleX(0)";
 
-      answerVideo.src = btn.video || `${ANSWERS_DIR}${btn.id}.mp4`;
-      answerVideo.muted = false;
-      answerVideo.load();
-      answerVideo.play().catch(() => {});
+      setView("answer");   // блюр остаётся включённым
 
-      setView("answer");
-    }
+      const topic = btn.id.split(".")[0];
+      const ready = await media.prepareAnswer(btn.video || `${ANSWERS_DIR}${topic}/${btn.id}.mp4`);
+      if (my !== flow) return;
 
-    function stopAnswer() {
-      answerVideo.pause();
-      answerVideo.classList.remove("ready");
-      answerVideo.removeAttribute("src");
-      answerVideo.load();
+      if (!ready) {
+        answerView.classList.add("is-missing");
+        armIdle();
+        return;
+      }
+
+      await media.cueTail();
+      if (my !== flow) return;
+
+      setBlur(false);
     }
 
     function backToTopic() {
+      flow++;
+      media.exitAnswer();
       if (currentTopic) openTopic(currentTopic);
       else showIdle();
     }
 
-
-    /* =========================================================
-       СОБЫТИЯ ВИДЕО ОТВЕТА
-       ========================================================= */
-
-    answerVideo.addEventListener("playing", () => {
-      if (document.body.dataset.view !== "answer") return;
-      answerVideo.classList.add("ready");
-      loop.pause();   // фон не нужен, пока идёт ответ
-    });
-
-    answerVideo.addEventListener("timeupdate", () => {
-      const d = answerVideo.duration;
-      if (d) progressBar.style.transform = `scaleX(${answerVideo.currentTime / d})`;
-    });
-
-    // После ответа возвращаемся на тот же вопрос
-    answerVideo.addEventListener("ended", backToTopic);
-
-    // Файла ответа нет: показываем понятное сообщение
-    answerVideo.addEventListener("error", () => {
-      if (document.body.dataset.view !== "answer" || !answerVideo.getAttribute("src")) return;
-      console.warn("Нет видеоответа:", answerVideo.getAttribute("src"));
-      answerView.classList.add("is-missing");
-      armIdle();
-    });
+    media.onProgress  = k => { progressBar.style.transform = `scaleX(${k})`; };
+    media.onAnswerEnd = backToTopic;   // после ответа — тот же вопрос
 
 
     /* =========================================================
@@ -891,7 +926,8 @@
        ЗАПУСК
        ========================================================= */
 
-    showIdle();
+    setView("idle");
+    media.play();
   </script>
 </body>
 </html>
