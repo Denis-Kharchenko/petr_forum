@@ -124,6 +124,11 @@
       transform: scale(1.1);
     }
 
+    /* Перед ответом фон играет всего LEAD секунд:
+       блюр должен уйти раньше, чем начнётся склейка */
+    body.quick .stage,
+    body.quick .scrim-deep { transition-duration: 0.45s; }
+
     /* Затемнения поверх видео */
     .scrim {
       position: fixed; inset: 0;
@@ -534,10 +539,14 @@
     // Длина склейки (mix), секунды: петля фона, фон → ответ, ответ → фон
     const CROSSFADE = 0.3;
 
-    // Сколько последних секунд фона показать перед ответом.
-    // Под блюром фон незаметно перематывается к этой точке,
-    // блюр растворяется, фон доигрывает и через микс переходит в ответ.
-    const TAIL = 1.8;
+    // Секунда фона, на которой начинается микс в ответ
+    // (поза Петра здесь совпадает с началом роликов-ответов).
+    const ANSWER_CUE = 15;
+
+    // За сколько секунд до склейки запускается фон.
+    // Под блюром фон незаметно перематывается на ANSWER_CUE - LEAD,
+    // блюр растворяется, фон играет LEAD секунд и миксуется в ответ.
+    const LEAD = 0.5;
 
     // Видеоответы: videos/<номер темы>/<номер вопроса>.mp4,
     // например videos/1/1.1.mp4. Чтобы указать другой файл,
@@ -623,8 +632,8 @@
 
        loop      фон крутится: за CROSSFADE до конца вторая копия
                  стартует с начала и проявляется поверх первой
-       toAnswer  фон перемотан к последним TAIL секундам;
-                 в конце он миксуется в ответ
+       toAnswer  фон перемотан на ANSWER_CUE - LEAD;
+                 на ANSWER_CUE он миксуется в ответ
        answer    идёт ответ; в конце миксуется в начало фона
        ========================================================= */
 
@@ -704,14 +713,21 @@
         const d = cur.duration, t = cur.currentTime;
         if (!d) return;
         if (cur === ans && api.onProgress) api.onProgress(t / d);
+
+        // Склейка фон → ответ на секунде ANSWER_CUE
+        if (mode === "toAnswer") {
+          if (t >= Math.min(ANSWER_CUE, d - CROSSFADE)) {
+            mode = "answer";
+            crossfade(cur, ans);
+            if (api.onAnswerStart) api.onAnswerStart();
+          }
+          return;
+        }
+
         if (t < d - CROSSFADE) return;
 
         if (mode === "loop") {
           crossfade(cur, spareLoop());
-        } else if (mode === "toAnswer") {
-          mode = "answer";
-          crossfade(cur, ans);
-          if (api.onAnswerStart) api.onAnswerStart();
         } else if (mode === "answer" && cur === ans) {
           if (api.onAnswerEnd) api.onAnswerEnd();
         }
@@ -737,15 +753,12 @@
         ans.load();
       });
 
-      // Скрытая перемотка фона к последним TAIL секундам (пока экран размыт)
-      api.cueTail = async () => {
+      // Скрытая перемотка фона за LEAD секунд до склейки (пока экран размыт)
+      api.cueAnswer = async () => {
         while (busy) await wait(30);
         mode = "toAnswer";
-        const d = cur.duration || 0;
-        if (d && cur.currentTime < d - TAIL) {
-          cur.currentTime = Math.max(0, d - TAIL);
-          await once(cur, "seeked", 1000);
-        }
+        cur.currentTime = Math.max(0, ANSWER_CUE - LEAD);
+        await once(cur, "seeked", 1000);
       };
 
       // Выход из ответа на любом этапе: ответ миксуется в начало фона
@@ -788,6 +801,7 @@
 
     function setView(name) {
       document.body.dataset.view = name;
+      document.body.classList.remove("quick");
       setBlur(name !== "idle");
       armIdle();
     }
@@ -862,9 +876,9 @@
     /*
        Ответ:
        1. экран вопроса гаснет, фон ещё в блюре, сразу видна подпись;
-       2. грузится ролик, фон под блюром перематывается к концу;
-       3. блюр растворяется, фон доигрывает последние секунды;
-       4. микс фон → ответ; в конце ответа микс обратно под блюр.
+       2. грузится ролик, фон под блюром перематывается на ANSWER_CUE - LEAD;
+       3. блюр растворяется, фон играет LEAD секунд;
+       4. на ANSWER_CUE микс фон → ответ; в конце ответа микс обратно под блюр.
     */
     async function playAnswer(btn) {
       const my = ++flow;
@@ -886,9 +900,10 @@
         return;
       }
 
-      await media.cueTail();
+      await media.cueAnswer();
       if (my !== flow) return;
 
+      document.body.classList.add("quick");
       setBlur(false);
     }
 
