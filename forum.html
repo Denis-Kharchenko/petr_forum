@@ -345,10 +345,9 @@
     }
 
     .menu-sub { gap: 0.9rem; }
-    .menu-sub .q { min-height: 5.4rem; grid-template-columns: 3.6rem 1fr auto; padding-left: 1.3rem; }
-    .menu-sub .q-num { font-size: 1.5rem; }
+    .menu-sub .q { min-height: 5.4rem; grid-template-columns: 1fr; padding: 0.95rem 1.6rem; }
+    .menu-sub .q-num { display: none; }   /* у вопросов внутри темы — только текст */
     .menu-sub .q-text { font-size: 1.3rem; }
-    .menu-sub .q .icon { font-size: 1.6rem; }
 
     /* =========================================================
        ЭКРАН ОТВЕТА
@@ -720,17 +719,17 @@
     const tree = {
       root: {
         buttons: [
-          { id: "1", num: "I",   text: "Зачем выбрали это место для Петербурга?", type: "branch" },
-          { id: "2", num: "II",  text: "Что делать при частой прокрастинации?",   type: "branch" },
-          { id: "3", num: "III", text: "Жалели ли о решениях, принятых в гневе?", type: "branch" },
-          { id: "4", num: "IV",  text: "Главный совет для современной России?",   type: "branch" },
-          { id: "5", num: "V",   text: "Как правильно выбирать людей в команду?", type: "branch" }
+          { id: "1", num: "I",   text: "Петербург",                              type: "branch" },
+          { id: "2", num: "II",  text: "О прокрастинации",                       type: "branch" },
+          { id: "3", num: "III", text: "Об эмоциях",                             type: "branch" },
+          { id: "4", num: "IV",  text: "Главный совет для современной России",   type: "branch" },
+          { id: "5", num: "V",   text: "Как правильно выбирать людей в команду", type: "branch" }
         ]
       },
 
       "1": {
         num: "I",
-        title: "Зачем выбрали это место для Петербурга?",
+        title: "Петербург",
         buttons: [
           { id: "1.1", num: "1.1", text: "Зачем нужна была связь с Европой?", type: "leaf" },
           { id: "1.2", num: "1.2", text: "Зачем насильно брили бороды и меняли одежду?", type: "leaf" },
@@ -740,7 +739,7 @@
 
       "2": {
         num: "II",
-        title: "Что делать при частой прокрастинации?",
+        title: "О прокрастинации",
         buttons: [
           { id: "2.1", num: "2.1", text: "Откуда столько энергии на все реформы?", type: "leaf" },
           { id: "2.2", num: "2.2", text: "Хотелось ли когда-то всё бросить?", type: "leaf" },
@@ -750,7 +749,7 @@
 
       "3": {
         num: "III",
-        title: "Жалели ли о решениях, принятых в гневе?",
+        title: "Об эмоциях",
         buttons: [
           { id: "3.1", num: "3.1", text: "Как справляться со стрессом и давлением?", type: "leaf" },
           { id: "3.2", num: "3.2", text: "Как научиться сдерживать гнев и не рубить с плеча?", type: "leaf" },
@@ -760,7 +759,7 @@
 
       "4": {
         num: "IV",
-        title: "Главный совет для современной России?",
+        title: "Главный совет для современной России",
         buttons: [
           { id: "4.1", num: "4.1", text: "Россия — это Европа, Азия или особый путь?", type: "leaf" },
           { id: "4.2", num: "4.2", text: "Чему современные правители могли бы у вас поучиться?", type: "leaf" },
@@ -770,7 +769,7 @@
 
       "5": {
         num: "V",
-        title: "Как правильно выбирать людей в команду?",
+        title: "Как правильно выбирать людей в команду",
         buttons: [
           { id: "5.1", num: "5.1", text: "Почему прощалось воровство Меншикову?", type: "leaf" },
           { id: "5.2", num: "5.2", text: "Что делать, если друг тянет проект на дно?", type: "leaf" },
@@ -936,7 +935,6 @@
     const progressBar  = $("answerProgress");
 
     const ARROW = '<svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>';
-    const PLAY  = '<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.25"/><path d="M10 8.6v6.8l5.4-3.4z"/></svg>';
 
 
     /* =========================================================
@@ -1016,7 +1014,7 @@
 
       topicMenu.innerHTML = "";
       node.buttons.forEach((btn, i) =>
-        topicMenu.appendChild(makeItem(btn, i + 1, PLAY, playAnswer))
+        topicMenu.appendChild(makeItem(btn, i + 1, "", playAnswer))
       );
 
       setView("topic");
