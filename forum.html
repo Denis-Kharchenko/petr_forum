@@ -435,6 +435,105 @@
     .view-answer.is-missing .close { display: none; }
 
     /* =========================================================
+       ФОТО С ПЕТРОМ
+       ========================================================= */
+
+    .q-photo { margin-top: 0.7rem; }
+    .q-photo .q-num .icon { width: 1.6rem; height: 1.6rem; opacity: 1; }
+
+    /* во время фото фон с видео не нужен: кадр закрывает экран */
+    body[data-view="photo"] .stage,
+    body[data-view="photo"] .scrim { visibility: hidden; }
+
+    body[data-view="photo"] .view-photo {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.5s var(--ease), visibility 0s;
+    }
+    .view-photo { padding: 0; background: var(--ink); }
+
+    #photoCanvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+    }
+
+    .photo-hint {
+      position: absolute;
+      top: max(5vh, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      max-width: calc(100% - 2 * var(--gutter));
+      padding: 0.8rem 1.8rem;
+      border: 1px solid var(--gold-line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      font-family: var(--serif);
+      font-size: 1.7rem;
+      font-weight: 600;
+      text-align: center;
+      color: var(--paper);
+    }
+
+    .photo-count {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: var(--serif);
+      font-size: 16rem;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--gold);
+      text-shadow: 0 0 3rem rgba(0, 0, 0, 0.7);
+      pointer-events: none;
+    }
+    .photo-count.pop { animation: photo-pop 1s ease-out; }
+    @keyframes photo-pop {
+      0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.6); }
+      25%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+    }
+
+    .photo-flash {
+      position: absolute; inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .photo-flash.on { animation: photo-flash 0.7s ease-out; }
+    @keyframes photo-flash { 0% { opacity: 0.95; } 100% { opacity: 0; } }
+
+    .photo-bar {
+      position: absolute;
+      left: 50%;
+      bottom: max(5vh, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      display: none;
+      align-items: center;
+      gap: 1rem;
+    }
+    body[data-photo="live"]   #photoBarLive,
+    body[data-photo="result"] #photoBarResult { display: flex; }
+
+    .photo-bar .back { background: var(--panel); }
+    .photo-main {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.7rem;
+      min-height: 4.4rem;
+      padding: 0 2.2rem;
+      border-radius: var(--radius);
+      background: var(--gold);
+      color: var(--ink);
+      font-size: 1.25rem;
+      font-weight: 600;
+      box-shadow: 0 0.4rem 1.4rem rgba(5, 3, 2, 0.45);
+      transition: transform 0.15s ease, background 0.25s ease;
+    }
+    .photo-main:hover, .photo-main:focus-visible { background: #e3bd68; }
+    .photo-main:active { transform: scale(0.97); }
+
+    /* =========================================================
        ВЕРТИКАЛЬНЫЙ ЭКРАН / УЗКИЕ ЭКРАНЫ (черновая адаптация,
        точную вёрстку сделаем под модель киоска)
        ========================================================= */
@@ -480,6 +579,11 @@
       <p>Вопросы к государю</p>
     </header>
     <ol class="menu" id="rootMenu"></ol>
+    <button class="q q-photo rise" id="photoOpen" style="--i: 6">
+      <span class="q-num"><svg class="icon" viewBox="0 0 24 24"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="12.5" r="3.5"/></svg></span>
+      <span class="q-text">Сфотографироваться с Петром</span>
+      <svg class="icon" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+    </button>
     <p class="hint rise" style="--i: 7">
       <svg class="icon" viewBox="0 0 24 24"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1-6 6h-1a5 5 0 0 1-4.2-2.3L4.5 15a1.5 1.5 0 0 1 2.4-1.8L9 15"/></svg>
       Коснитесь вопроса, и Пётр ответит
@@ -523,6 +627,26 @@
         <svg class="icon" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></svg>
         Вернуться к вопросам
       </button>
+    </div>
+  </section>
+
+  <!-- ===================== ФОТО С ПЕТРОМ (photo.js) ===================== -->
+  <section class="view view-photo" aria-label="Фото с Петром">
+    <canvas id="photoCanvas"></canvas>
+    <div class="photo-flash" id="photoFlash"></div>
+    <p class="photo-hint" id="photoHint"></p>
+    <div class="photo-count" id="photoCount"></div>
+
+    <div class="photo-bar" id="photoBarLive">
+      <button class="back" id="photoBack">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M19 12H5m6-6-6 6 6 6"/></svg>
+        Назад
+      </button>
+      <button class="photo-main" id="photoShoot">Сделать снимок</button>
+    </div>
+    <div class="photo-bar" id="photoBarResult">
+      <button class="back" id="photoRetake">Переснять</button>
+      <button class="photo-main" id="photoDone">Готово</button>
     </div>
   </section>
 
@@ -797,7 +921,8 @@
       clearTimeout(idleTimer);
       const v = document.body.dataset.view;
       const answering = v === "answer" && !answerView.classList.contains("is-missing");
-      if (v !== "idle" && !answering) {
+      // у фото свои тайм-ауты (photo.js)
+      if (v !== "idle" && v !== "photo" && !answering) {
         idleTimer = setTimeout(showIdle, IDLE_TIMEOUT * 1000);
       }
     }
@@ -930,6 +1055,10 @@
       if (id === "root") continue;
       for (const btn of tree[id].buttons) media.preload(answerSrc(btn));
     }
+
+    // Для фото с Петром (photo.js)
+    window.kiosk = { setView, showIdle };
   </script>
+  <script type="module" src="photo.js"></script>
 </body>
 </html>
