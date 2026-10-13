@@ -55,6 +55,7 @@ const ctx = canvas.getContext("2d");
 const hint = $("photoHint");
 const count = $("photoCount");
 const flash = $("photoFlash");
+const shootBtn = $("photoShoot");
 const qrBox = $("photoQr");
 const qrCode = $("photoQrCode");
 const qrText = $("photoQrText");
@@ -217,8 +218,11 @@ function loop() {
     lastCamTime = cam.currentTime;                     // новый кадр камеры
     segment();
   }
+  shootBtn.disabled = !target;                         // пустой кадр не снимаем
   render();
 }
+
+const HINT_LIVE = "Встаньте перед камерой — вы появитесь рядом с Петром";
 
 
 /* =========================================================
@@ -249,7 +253,9 @@ async function openPhoto() {
   muteBackground(true);
   sizeCanvas();
   setMode("live");
-  hint.textContent = "Встаньте перед камерой — вы появитесь рядом с Петром";
+  shootBtn.disabled = true;
+  // при первом открытии сайта нейросеть (~25 МБ) может ещё догружаться
+  hint.textContent = segmenter ? HINT_LIVE : "Готовим камеру…";
   render();
 
   try {
@@ -272,6 +278,7 @@ async function openPhoto() {
     return;
   }
   if (state === "off") return stopCamera();
+  hint.textContent = HINT_LIVE;
   loop();
 }
 
@@ -294,7 +301,7 @@ function closePhoto() {
 }
 
 function shoot() {
-  if (state !== "live") return;
+  if (state !== "live" || !target) return;
   setMode("countdown");
   hint.textContent = "Улыбайтесь!";
   let n = COUNTDOWN;
@@ -407,7 +414,7 @@ function retake() {
   if (state !== "result") return;
   shot++;
   setMode("live");
-  hint.textContent = "Встаньте перед камерой — вы появитесь рядом с Петром";
+  hint.textContent = HINT_LIVE;
   loop();
 }
 
@@ -427,5 +434,5 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closePhoto()
 // повернули экран во время съёмки — перестраиваем кадр
 addEventListener("resize", () => { if (state === "live" || state === "countdown") sizeCanvas(); });
 
-// Нейросеть грузим, когда фон уже пошёл
-setTimeout(loadSegmenter, 3000);
+// Нейросеть грузим сразу: из интернета это до минуты
+loadSegmenter();
