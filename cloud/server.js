@@ -11,6 +11,8 @@
 // Переменные окружения:
 //   UPLOAD_TOKEN    секрет киоска (обязательно)
 //   RETENTION_DAYS  сколько дней хранить снимки (по умолчанию 30)
+//   ALLOWED_ORIGINS сайты, с которых браузер киоска может слать фото напрямую,
+//                   через запятую (по умолчанию GitHub Pages киоска)
 //   PUBLIC_URL      адрес сервиса; по умолчанию берётся домен Railway
 //   PORT, RAILWAY_VOLUME_MOUNT_PATH, RAILWAY_PUBLIC_DOMAIN — задаёт Railway
 
@@ -27,6 +29,19 @@ const PUBLIC_URL = (process.env.PUBLIC_URL
   || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : `http://localhost:${PORT}`)
 ).replace(/\/$/, "");
 const MAX_SIZE = 15 * 1024 * 1024;
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "https://denis-kharchenko.github.io")
+  .split(",").map(s => s.trim()).filter(Boolean);
+
+// Киоск, открытый с GitHub Pages, шлёт фото из браузера — разрешаем это его сайту
+function cors(req, res) {
+  const origin = req.headers.origin;
+  if (!ALLOWED_ORIGINS.includes(origin)) return;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  res.setHeader("Vary", "Origin");
+}
 
 if (!TOKEN) console.warn("UPLOAD_TOKEN не задан — загрузка фото отключена");
 fs.mkdirSync(DIR, { recursive: true });
@@ -111,7 +126,11 @@ http.createServer((req, res) => {
   const url = new URL(req.url, "http://x");
   const m = /^\/p\/([^/.]+)(\.jpg)?$/.exec(url.pathname);
 
-  if (req.method === "POST" && url.pathname === "/upload") return upload(req, res);
+  if (url.pathname === "/upload") {
+    cors(req, res);
+    if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
+    if (req.method === "POST") return upload(req, res);
+  }
   if (req.method === "GET" && url.pathname === "/health") return send(res, 200, "ok");
   if (req.method === "GET" && m && ID_RE.test(m[1])) {
     return m[2] ? photo(res, m[1], url.searchParams.has("download")) : page(res, m[1]);

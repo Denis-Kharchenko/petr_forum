@@ -33,6 +33,13 @@ const PERSON_FILTER = "sepia(0.15) saturate(0.9) contrast(1.04) brightness(0.96)
 const EDGE_SOFTNESS = 1.5;               // мягкость края вырезки, px камеры
 const MASK_LOW = 0.25, MASK_HIGH = 0.6;  // уверенность нейросети: ниже — фон, выше — человек
 const SMOOTH = 0.25;                     // сглаживание движения (0…1, меньше — плавнее)
+// Облако для фото (cloud/ на Railway). Если киоск открыт не через
+// локальный сервер (например, с GitHub Pages), браузер шлёт фото туда сам.
+// Ключ вводится один раз: откройте forum.html#key=<UPLOAD_TOKEN> —
+// он запомнится в этом браузере и сразу пропадёт из адреса.
+const CLOUD_URL = "https://petrforum-production.up.railway.app";
+const KEY_STORAGE = "petr-cloud-key";
+
 const COUNTDOWN = 3;                     // секунд обратного отсчёта
 const LIVE_TIMEOUT = 45;                 // без касаний в превью → на экран ожидания, с
 const RESULT_TIMEOUT = 60;               // сколько показывать готовое фото и QR, с
@@ -313,22 +320,73 @@ function capture() {
   hint.textContent = "Ваш портрет с Петром Великим";
   showQr("wait");
 
-  // локальный сервер киоска (server.js) кладёт снимок в photos/
-  // и отправляет копию в облако; в ответ — ссылка для гостя
   const my = ++shot;
   canvas.toBlob(async blob => {
-    let url = null;
-    try { url = (await (await fetch("save", { method: "POST", body: blob })).json()).url; }
-    catch (e) { console.error("Фото не сохранено:", e); }
-    if (my === shot && state === "result") showQr(url ? "ready" : "off", url);
+    const res = await savePhoto(blob);
+    if (my !== shot || state !== "result") return;
+    if (res.url) showQr("ready", res.url);
+    else if (res.saved) showQr("off");
+    else showQr("download", URL.createObjectURL(blob));   // сохранить некуда — отдаём файлом
   }, "image/jpeg", 0.92);
 }
 
-// Карточка со ссылкой на фото: wait — загружается, ready — QR, off — облака нет
+// 1) локальный сервер киоска (server.js): архив в photos/ + копия в облако;
+// 2) без него — прямо в облако, если в этом браузере сохранён ключ.
+// Ответ: { saved, url } — url для QR или null
+async function savePhoto(blob) {
+  try {
+    const r = await fetch("save", { method: "POST", body: blob });
+    if (r.ok && (r.headers.get("content-type") || "").includes("json")) {
+      const { file, url } = await r.json();
+      return { saved: !!file, url };
+    }
+  } catch {}
+
+  const key = cloudKey();
+  if (!key) return { saved: false, url: null };
+  try {
+    const r = await fetch(CLOUD_URL + "/upload", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + key, "Content-Type": "image/jpeg" },
+      body: blob,
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return { saved: true, url: (await r.json()).url };
+  } catch (e) {
+    console.error("Фото не отправлено в облако:", e);
+    return { saved: false, url: null };
+  }
+}
+
+function cloudKey() {
+  try { return localStorage.getItem(KEY_STORAGE); } catch { return null; }
+}
+
+// Ключ из адреса (#key=…) запоминаем и убираем из адресной строки
+(function takeKeyFromUrl() {
+  const m = /[#&]key=([^&]+)/.exec(location.hash);
+  if (!m) return;
+  try { localStorage.setItem(KEY_STORAGE, decodeURIComponent(m[1])); } catch {}
+  history.replaceState(null, "", location.pathname + location.search);
+})();
+
+// Карточка со ссылкой на фото: wait — загружается, ready — QR,
+// off — сохранено только у организаторов, download — кнопка «Скачать»
+let downloadUrl = null;
 function showQr(mode, url) {
-  qrBox.classList.toggle("is-off", mode === "off");
+  if (downloadUrl) { URL.revokeObjectURL(downloadUrl); downloadUrl = null; }
+  qrBox.classList.toggle("is-off", mode === "off" || mode === "download");
   qrCode.textContent = "";
-  if (mode === "wait") {
+  qrText.textContent = "";
+  if (mode === "download") {
+    downloadUrl = url;
+    const a = document.createElement("a");
+    a.className = "photo-main";
+    a.href = url;
+    a.download = "foto-s-petrom.jpg";
+    a.textContent = "Скачать фото";
+    qrText.appendChild(a);
+  } else if (mode === "wait") {
     qrCode.textContent = "Загружаем фото…";
     qrText.textContent = "Сейчас здесь появится QR-код";
   } else if (mode === "ready") {

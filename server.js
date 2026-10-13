@@ -15,7 +15,8 @@ const CLOUD_CONFIG = path.join(ROOT, "cloud.json");   // { "url": "https://…",
 
 function readCloud() {
   try {
-    const c = JSON.parse(fs.readFileSync(CLOUD_CONFIG, "utf8"));
+    // Блокнот Windows может сохранить файл с BOM — убираем его
+    const c = JSON.parse(fs.readFileSync(CLOUD_CONFIG, "utf8").replace(/^﻿/, ""));
     if (c.url && c.token) return { url: c.url.replace(/\/$/, ""), token: c.token };
   } catch {}
   return null;
