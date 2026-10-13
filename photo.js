@@ -35,7 +35,7 @@ const MASK_LOW = 0.25, MASK_HIGH = 0.6;  // уверенность нейрос�
 const SMOOTH = 0.25;                     // сглаживание движения (0…1, меньше — плавнее)
 const COUNTDOWN = 3;                     // секунд обратного отсчёта
 const LIVE_TIMEOUT = 45;                 // без касаний в превью → на экран ожидания, с
-const RESULT_TIMEOUT = 30;               // сколько показывать готовое фото, с
+const RESULT_TIMEOUT = 60;               // сколько показывать готовое фото и QR, с
 
 
 /* =========================================================
@@ -48,6 +48,9 @@ const ctx = canvas.getContext("2d");
 const hint = $("photoHint");
 const count = $("photoCount");
 const flash = $("photoFlash");
+const qrBox = $("photoQr");
+const qrCode = $("photoQrCode");
+const qrText = $("photoQrText");
 
 const bg = new Image();
 bg.src = BG_SRC;
@@ -68,6 +71,7 @@ let state = "off";          // off | live | countdown | result
 let stream = null, raf = 0, idleTimer = 0, lastCamTime = -1;
 let target = null, cur = null;   // человек в сцене: {x, y, s}
 let view = null;                 // видимая часть фона и сдвиг пары (неподвижны)
+let shot = 0;                    // номер снимка: ответ облака на старый снимок не показываем
 
 
 /* =========================================================
@@ -307,14 +311,43 @@ function capture() {
   flash.classList.remove("on"); void flash.offsetWidth; flash.classList.add("on");
   setMode("result");
   hint.textContent = "Ваш портрет с Петром Великим";
-  // сохраняет локальный сервер киоска (server.js) в папку photos/
-  canvas.toBlob(blob => {
-    fetch("save", { method: "POST", body: blob }).catch(() => {});
+  showQr("wait");
+
+  // локальный сервер киоска (server.js) кладёт снимок в photos/
+  // и отправляет копию в облако; в ответ — ссылка для гостя
+  const my = ++shot;
+  canvas.toBlob(async blob => {
+    let url = null;
+    try { url = (await (await fetch("save", { method: "POST", body: blob })).json()).url; }
+    catch (e) { console.error("Фото не сохранено:", e); }
+    if (my === shot && state === "result") showQr(url ? "ready" : "off", url);
   }, "image/jpeg", 0.92);
+}
+
+// Карточка со ссылкой на фото: wait — загружается, ready — QR, off — облака нет
+function showQr(mode, url) {
+  qrBox.classList.toggle("is-off", mode === "off");
+  qrCode.textContent = "";
+  if (mode === "wait") {
+    qrCode.textContent = "Загружаем фото…";
+    qrText.textContent = "Сейчас здесь появится QR-код";
+  } else if (mode === "ready") {
+    const qr = qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    const img = new Image();
+    img.src = qr.createDataURL(8, 2);
+    img.alt = "QR-код со ссылкой на фото";
+    qrCode.appendChild(img);
+    qrText.textContent = "Наведите камеру телефона, чтобы забрать фото";
+  } else {
+    qrText.textContent = "Не удалось выдать ссылку. Фото сохранено у организаторов";
+  }
 }
 
 function retake() {
   if (state !== "result") return;
+  shot++;
   setMode("live");
   hint.textContent = "Встаньте перед камерой — вы появитесь рядом с Петром";
   loop();

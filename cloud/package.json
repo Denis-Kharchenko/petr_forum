@@ -1,0 +1,12 @@
+{
+  "name": "petr-photo-cloud",
+  "private": true,
+  "description": "Хранение фото с Петром и выдача гостям по QR (Railway)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

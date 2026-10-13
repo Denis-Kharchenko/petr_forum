@@ -1,5 +1,7 @@
 // Локальный сервер киоска: раздаёт файлы проекта и сохраняет фото в папку photos/.
 // Нужен потому, что браузер даёт доступ к камере только на http://localhost (не file://).
+// Если есть cloud.json — копия фото уходит в облако (cloud/ на Railway),
+// а киоск показывает гостю QR-код со ссылкой.
 // Запуск: node server.js  →  http://localhost:8080
 
 const http = require("http");
@@ -9,6 +11,34 @@ const path = require("path");
 const PORT = 8080;
 const ROOT = __dirname;
 const PHOTOS = path.join(ROOT, "photos");
+const CLOUD_CONFIG = path.join(ROOT, "cloud.json");   // { "url": "https://…", "token": "…" }, в git не попадает
+
+function readCloud() {
+  try {
+    const c = JSON.parse(fs.readFileSync(CLOUD_CONFIG, "utf8"));
+    if (c.url && c.token) return { url: c.url.replace(/\/$/, ""), token: c.token };
+  } catch {}
+  return null;
+}
+const cloud = readCloud();
+
+// Отправляет снимок в облако; ссылка для гостя или null
+async function uploadToCloud(body) {
+  if (!cloud) return null;
+  try {
+    const r = await fetch(cloud.url + "/upload", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + cloud.token, "Content-Type": "image/jpeg" },
+      body,
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return (await r.json()).url;
+  } catch (e) {
+    console.error("Не удалось отправить фото в облако:", e.message);
+    return null;
+  }
+}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -26,14 +56,23 @@ const MIME = {
 function savePhoto(req, res) {
   const chunks = [];
   req.on("data", c => chunks.push(c));
-  req.on("end", () => {
-    fs.mkdirSync(PHOTOS, { recursive: true });
+  req.on("end", async () => {
+    const body = Buffer.concat(chunks);
+    // архив у организаторов: photos/<день>/petr-<время>.jpg
     const stamp = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
-    const file = path.join(PHOTOS, `petr-${stamp}.jpg`);
-    fs.writeFile(file, Buffer.concat(chunks), err => {
-      res.writeHead(err ? 500 : 200, { "Content-Type": "text/plain" });
-      res.end(err ? "error" : path.basename(file));
-    });
+    const dir = path.join(PHOTOS, stamp.slice(0, 10));
+    const file = path.join(dir, `petr-${stamp}.jpg`);
+    let saved = true;
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file, body);
+    } catch (e) {
+      console.error("Не удалось сохранить фото:", e.message);
+      saved = false;
+    }
+    const url = await uploadToCloud(body);
+    res.writeHead(saved || url ? 200 : 500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ file: saved ? path.basename(file) : null, url }));
   });
 }
 
@@ -41,7 +80,7 @@ function serveFile(req, res) {
   let rel = decodeURIComponent(new URL(req.url, "http://x").pathname);
   if (rel === "/") rel = "/index.html";
   const file = path.normalize(path.join(ROOT, rel));
-  if (!file.startsWith(ROOT) || file.startsWith(PHOTOS)) {
+  if (!file.startsWith(ROOT) || file.startsWith(PHOTOS) || file === CLOUD_CONFIG) {
     res.writeHead(403); return res.end();
   }
   fs.stat(file, (err, st) => {
@@ -71,6 +110,7 @@ http.createServer((req, res) => {
   serveFile(req, res);
 }).listen(PORT, "0.0.0.0", () => {
   console.log(`Киоск на этом компьютере: http://localhost:${PORT}`);
+  console.log(cloud ? `Фото уходят в облако: ${cloud.url}` : "cloud.json не найден — фото только в photos/, без QR");
   // адреса для телефона/планшета в той же Wi-Fi сети
   for (const list of Object.values(require("os").networkInterfaces()))
     for (const a of list)

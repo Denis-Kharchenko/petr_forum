@@ -1,0 +1,4 @@
+{
+  "url": "https://ВАШ-СЕРВИС.up.railway.app",
+  "token": "тот же секрет, что в переменной UPLOAD_TOKEN на Railway"
+}
