@@ -826,15 +826,20 @@
         });
       }
 
+      // Громкость меняется по таймеру, а не по кадрам отрисовки:
+      // когда окно свёрнуто или перекрыто, requestAnimationFrame
+      // не срабатывает, и звук застревал на нуле.
+      let fadeId = 0;
       function fadeAudio(from, to) {
-        const t0 = performance.now();
+        const id = ++fadeId, t0 = performance.now();
         to.volume = 0;
-        (function step(now) {
-          const k = Math.min(1, (now - t0) / (CROSSFADE * 1000));
+        const timer = setInterval(() => {
+          if (id !== fadeId) return clearInterval(timer);
+          const k = Math.min(1, (performance.now() - t0) / (CROSSFADE * 1000));
           to.volume = k;
           from.volume = 1 - k;
-          if (k < 1) requestAnimationFrame(step);
-        })(t0);
+          if (k >= 1) clearInterval(timer);
+        }, 20);
       }
 
       // Микс со слоя from на слой to (to стартует с начала)
@@ -850,6 +855,7 @@
           from.classList.remove("on");
           from.pause();
           from.volume = 1;
+          to.volume = 1;          // на случай, если таймер микса отстал
           from.currentTime = 0;   // заранее готовим к следующему запуску
           cur = to;
           busy = false;
