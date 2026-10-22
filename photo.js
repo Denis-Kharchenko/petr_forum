@@ -39,6 +39,8 @@ const SMOOTH = 0.25;                     // сглаживание движен�
 // он запомнится в этом браузере и сразу пропадёт из адреса.
 const CLOUD_URL = "https://petrforum-production.up.railway.app";
 const KEY_STORAGE = "petr-cloud-key";
+// Выбранная кнопкой «Камера» вебка запоминается в этом браузере
+const CAMERA_STORAGE = "petr-camera";
 
 const COUNTDOWN = 3;                     // секунд обратного отсчёта
 const LIVE_TIMEOUT = 45;                 // без касаний в превью → на экран ожидания, с
@@ -59,6 +61,7 @@ const shootBtn = $("photoShoot");
 const qrBox = $("photoQr");
 const qrCode = $("photoQrCode");
 const qrText = $("photoQrText");
+const cameraBtn = $("photoCamera");
 
 const bg = new Image();
 bg.src = BG_SRC;
@@ -261,13 +264,8 @@ async function openPhoto() {
   try {
     // камеру браузер даёт только на https или http://localhost
     if (!navigator.mediaDevices) throw new Error("insecure context");
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
-      audio: false,
-    });
+    await startCamera(savedCamera());
     if (state === "off") return stopCamera();          // успели нажать «Назад»
-    cam.srcObject = stream;
-    await cam.play();
     await loadSegmenter();
   } catch (e) {
     console.error(e);
@@ -282,10 +280,59 @@ async function openPhoto() {
   loop();
 }
 
+// deviceId — конкретная вебка; если её нет (отключили), берём камеру по умолчанию
+async function startCamera(deviceId) {
+  const video = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  let s;
+  try {
+    s = await navigator.mediaDevices.getUserMedia({
+      video: deviceId ? { ...video, deviceId: { exact: deviceId } } : { ...video, facingMode: "user" },
+      audio: false,
+    });
+  } catch (e) {
+    if (!deviceId) throw e;
+    s = await navigator.mediaDevices.getUserMedia({ video: { ...video, facingMode: "user" }, audio: false });
+  }
+  if (state === "off") { s.getTracks().forEach(t => t.stop()); return; }
+  stopCamera();
+  stream = s;
+  cam.srcObject = stream;
+  lastCamTime = -1;
+  await cam.play();
+  listCameras();
+}
+
 function stopCamera() {
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = null;
   cam.srcObject = null;
+}
+
+// Названия и id камер браузер отдаёт только после разрешения на камеру
+let cameras = [];
+async function listCameras() {
+  const all = await navigator.mediaDevices.enumerateDevices();
+  cameras = all.filter(d => d.kind === "videoinput");
+  cameraBtn.hidden = cameras.length < 2;
+}
+
+async function switchCamera() {
+  if (state !== "live" || cameras.length < 2) return;
+  const curId = stream && stream.getVideoTracks()[0].getSettings().deviceId;
+  const next = cameras[(cameras.findIndex(d => d.deviceId === curId) + 1) % cameras.length];
+  cameraBtn.disabled = true;
+  try {
+    await startCamera(next.deviceId);
+    try { localStorage.setItem(CAMERA_STORAGE, next.deviceId); } catch {}
+    target = cur = null;                               // человек из старой камеры не нужен
+  } catch (e) {
+    console.error("Камера не переключилась:", e);
+  }
+  cameraBtn.disabled = false;
+}
+
+function savedCamera() {
+  try { return localStorage.getItem(CAMERA_STORAGE); } catch { return null; }
 }
 
 function closePhoto() {
@@ -425,6 +472,7 @@ function retake() {
 
 $("photoOpen").addEventListener("click", openPhoto);
 $("photoShoot").addEventListener("click", shoot);
+cameraBtn.addEventListener("click", switchCamera);
 $("photoBack").addEventListener("click", closePhoto);
 $("photoRetake").addEventListener("click", retake);
 $("photoDone").addEventListener("click", closePhoto);
