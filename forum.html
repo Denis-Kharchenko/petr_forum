@@ -1096,10 +1096,22 @@
     setView("idle");
     media.play();
 
-    // Все видеоответы грузим сразу, чтобы по касанию они включались мгновенно
-    for (const id in tree) {
-      if (id === "root") continue;
-      for (const btn of tree[id].buttons) media.preload(answerSrc(btn));
+    // Все видеоответы грузим заранее, чтобы по касанию они включались мгновенно,
+    // но после фона: иначе с GitHub Pages они забирают канал и фон долго не появляется
+    function preloadAnswers() {
+      for (const id in tree) {
+        if (id === "root") continue;
+        for (const btn of tree[id].buttons) media.preload(answerSrc(btn));
+      }
+    }
+    const bgVideo = document.getElementById("loopA");
+    if (bgVideo.readyState >= 4) preloadAnswers();
+    else {
+      let started = false;
+      const go = () => { if (!started) { started = true; preloadAnswers(); } };
+      bgVideo.addEventListener("canplaythrough", go, { once: true });
+      bgVideo.addEventListener("error", go, { once: true });
+      setTimeout(go, 20000);   // фон грузится слишком долго — не ждём
     }
 
     // Для фото с Петром (photo.js)
