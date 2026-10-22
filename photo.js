@@ -42,7 +42,7 @@ const KEY_STORAGE = "petr-cloud-key";
 // Выбранная кнопкой «Камера» вебка запоминается в этом браузере
 const CAMERA_STORAGE = "petr-camera";
 
-const COUNTDOWN = 3;                     // секунд обратного отсчёта
+const COUNTDOWN = 6;                     // секунд обратного отсчёта
 const LIVE_TIMEOUT = 45;                 // без касаний в превью → на экран ожидания, с
 const RESULT_TIMEOUT = 60;               // сколько показывать готовое фото и QR, с
 

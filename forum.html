@@ -584,6 +584,9 @@
       .topic-grid { grid-template-columns: 1fr; gap: 3rem; align-content: center; }
       .topic-num { font-size: 6rem; }
       .topic-head h2 { max-width: none; font-size: 2.8rem; }
+      /* «Сделать снимок» — отдельной строкой над «Назад» и «Камера» */
+      #photoBarLive { flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100% - 2 * var(--gutter)); }
+      #photoShoot { order: -1; flex-basis: 100%; justify-content: center; }
     }
 
     /* =========================================================
