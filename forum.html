@@ -707,6 +707,8 @@
 
     // Фоновое видео экрана ожидания
     const BACKGROUND = "1010.mp4";
+    // Громкость фона (0…1); видеоответы звучат на полную
+    const BACKGROUND_VOLUME = 0.1;
 
     // Длина склейки (mix), секунды: петля фона, фон → ответ, ответ → фон
     const CROSSFADE = 0.3;
@@ -814,12 +816,14 @@
 
       for (const v of [a, b]) {
         v.src = BACKGROUND;
+        v.volume = BACKGROUND_VOLUME;
         v.loop = true;   // запасной вариант, если кадры не считаются (вкладка в фоне)
         v.addEventListener("error", () => console.warn("Не удалось загрузить фон:", BACKGROUND));
       }
 
       const wait = ms => new Promise(r => setTimeout(r, ms));
       const isAnswer = v => v !== a && v !== b;
+      const fullVolume = v => isAnswer(v) ? 1 : BACKGROUND_VOLUME;
 
       // Звук. Браузер может запретить автозапуск со звуком:
       // тогда фон идёт без звука до первого касания экрана.
@@ -844,8 +848,8 @@
         const timer = setInterval(() => {
           if (id !== fadeId) return clearInterval(timer);
           const k = Math.min(1, (performance.now() - t0) / (CROSSFADE * 1000));
-          to.volume = k;
-          from.volume = 1 - k;
+          to.volume = k * fullVolume(to);
+          from.volume = (1 - k) * fullVolume(from);
           if (k >= 1) clearInterval(timer);
         }, 20);
       }
@@ -862,8 +866,8 @@
         return wait(CROSSFADE * 1000 + 60).then(() => {
           from.classList.remove("on");
           from.pause();
-          from.volume = 1;
-          to.volume = 1;          // на случай, если таймер микса отстал
+          from.volume = fullVolume(from);
+          to.volume = fullVolume(to);   // на случай, если таймер микса отстал
           from.currentTime = 0;   // заранее готовим к следующему запуску
           cur = to;
           busy = false;
